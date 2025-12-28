@@ -1,0 +1,10 @@
+version: "3.9"
+
+services:
+  resolver:
+    build: .
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7
