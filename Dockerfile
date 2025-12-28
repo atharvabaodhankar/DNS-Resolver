@@ -7,4 +7,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY resolver ./resolver
 
-CMD ["python", "resolver/server.py"]
+ENTRYPOINT ["python", "resolver/server.py"]
