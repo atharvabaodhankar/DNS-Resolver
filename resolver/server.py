@@ -1,3 +1,4 @@
+import sys
 import dns.resolver
 import redis
 
@@ -37,4 +38,9 @@ def resolve_domain(domain: str):
 
 
 if __name__ == "__main__":
-    resolve_domain("google.com")
+    if len(sys.argv) < 2:
+        print("Usage: python server.py <domain>")
+        sys.exit(1)
+
+    domain = sys.argv[1]
+    resolve_domain(domain)
