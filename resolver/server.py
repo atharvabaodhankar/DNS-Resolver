@@ -8,12 +8,31 @@ r = redis.Redis(
     decode_responses=True
 )
 
+# ---------------- METRICS ----------------
+
+def incr_metric(name: str):
+    r.incr(f"dns:metrics:{name}")
+
+def get_metrics():
+    total = r.get("dns:metrics:total") or 0
+    hit = r.get("dns:metrics:hit") or 0
+    miss = r.get("dns:metrics:miss") or 0
+
+    print("📊 DNS Cache Metrics")
+    print("-------------------")
+    print(f"Total Queries : {total}")
+    print(f"Cache Hits    : {hit}")
+    print(f"Cache Misses : {miss}")
+
+# ---------------- DNS LOGIC ----------------
 
 def resolve_domain(domain: str):
+    incr_metric("total")
     cache_key = f"dns:{domain}"
 
     cached_ip = r.get(cache_key)
     if cached_ip:
+        incr_metric("hit")
         ttl = r.ttl(cache_key)
         print("🟢 CACHE HIT")
         print(f"Domain: {domain}")
@@ -21,6 +40,7 @@ def resolve_domain(domain: str):
         print(f"TTL: {ttl}")
         return
 
+    incr_metric("miss")
     print("🟡 CACHE MISS")
 
     resolver = dns.resolver.Resolver()
@@ -36,11 +56,18 @@ def resolve_domain(domain: str):
     print(f"IP: {ip}")
     print(f"TTL: {ttl}")
 
+# ---------------- ENTRYPOINT ----------------
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python server.py <domain>")
+        print("Usage:")
+        print("  resolve domain : docker compose run resolver google.com")
+        print("  view metrics   : docker compose run resolver stats")
         sys.exit(1)
 
-    domain = sys.argv[1]
-    resolve_domain(domain)
+    command = sys.argv[1]
+
+    if command == "stats":
+        get_metrics()
+    else:
+        resolve_domain(command)
