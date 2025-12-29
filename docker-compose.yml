@@ -1,8 +1,8 @@
-version: "3.9"
-
 services:
   resolver:
     build: .
+    ports:
+      - "1053:1053/udp"
     depends_on:
       - redis
 
