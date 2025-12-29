@@ -7,4 +7,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY resolver ./resolver
 
-ENTRYPOINT ["python", "resolver/server.py"]
+CMD ["python", "resolver/udp_server.py"]
