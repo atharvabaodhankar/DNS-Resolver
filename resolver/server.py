@@ -8,6 +8,8 @@ r = redis.Redis(
     decode_responses=True
 )
 
+SUPPORTED_TYPES = {"A", "AAAA", "CNAME"}
+
 # ---------------- METRICS ----------------
 
 def incr_metric(name: str):
@@ -26,18 +28,27 @@ def get_metrics():
 
 # ---------------- DNS LOGIC ----------------
 
-def resolve_domain(domain: str):
-    incr_metric("total")
-    cache_key = f"dns:{domain}"
+def resolve_domain(domain: str, record_type: str):
+    record_type = record_type.upper()
 
-    cached_ip = r.get(cache_key)
-    if cached_ip:
+    if record_type not in SUPPORTED_TYPES:
+        print(f"❌ Unsupported record type: {record_type}")
+        print(f"Supported types: {', '.join(SUPPORTED_TYPES)}")
+        return
+
+    incr_metric("total")
+
+    cache_key = f"dns:{domain}:{record_type}"
+
+    cached_value = r.get(cache_key)
+    if cached_value:
         incr_metric("hit")
         ttl = r.ttl(cache_key)
         print("🟢 CACHE HIT")
-        print(f"Domain: {domain}")
-        print(f"IP: {cached_ip}")
-        print(f"TTL: {ttl}")
+        print(f"Domain : {domain}")
+        print(f"Type   : {record_type}")
+        print(f"Value  : {cached_value}")
+        print(f"TTL    : {ttl}")
         return
 
     incr_metric("miss")
@@ -46,28 +57,38 @@ def resolve_domain(domain: str):
     resolver = dns.resolver.Resolver()
     resolver.nameservers = ["8.8.8.8"]
 
-    answer = resolver.resolve(domain, "A")
-    ip = answer[0].to_text()
+    try:
+        answer = resolver.resolve(domain, record_type)
+    except Exception as e:
+        print(f"❌ DNS lookup failed: {e}")
+        return
+
+    value = answer[0].to_text()
     ttl = answer.rrset.ttl
 
-    r.setex(cache_key, ttl, ip)
+    r.setex(cache_key, ttl, value)
 
-    print(f"Domain: {domain}")
-    print(f"IP: {ip}")
-    print(f"TTL: {ttl}")
+    print(f"Domain : {domain}")
+    print(f"Type   : {record_type}")
+    print(f"Value  : {value}")
+    print(f"TTL    : {ttl}")
 
 # ---------------- ENTRYPOINT ----------------
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage:")
-        print("  resolve domain : docker compose run resolver google.com")
-        print("  view metrics   : docker compose run resolver stats")
+        print("  Resolve domain:")
+        print("    docker compose run resolver <domain> [A|AAAA|CNAME]")
+        print("  View metrics:")
+        print("    docker compose run resolver stats")
         sys.exit(1)
 
-    command = sys.argv[1]
-
-    if command == "stats":
+    if sys.argv[1] == "stats":
         get_metrics()
-    else:
-        resolve_domain(command)
+        sys.exit(0)
+
+    domain = sys.argv[1]
+    record_type = sys.argv[2] if len(sys.argv) > 2 else "A"
+
+    resolve_domain(domain, record_type)
