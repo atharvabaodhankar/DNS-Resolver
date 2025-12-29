@@ -10,6 +10,9 @@ r = redis.Redis(
 
 SUPPORTED_TYPES = {"A", "AAAA", "CNAME"}
 
+RATE_LIMIT = 5      # max requests
+WINDOW = 10         # seconds
+
 # ---------------- METRICS ----------------
 
 def incr_metric(name: str):
@@ -19,12 +22,31 @@ def get_metrics():
     total = r.get("dns:metrics:total") or 0
     hit = r.get("dns:metrics:hit") or 0
     miss = r.get("dns:metrics:miss") or 0
+    blocked = r.get("dns:metrics:blocked") or 0
 
     print("📊 DNS Cache Metrics")
     print("-------------------")
     print(f"Total Queries : {total}")
     print(f"Cache Hits    : {hit}")
     print(f"Cache Misses : {miss}")
+    print(f"Rate Blocked : {blocked}")
+
+# ---------------- RATE LIMITING ----------------
+
+def is_rate_limited(domain: str) -> bool:
+    key = f"dns:rate:{domain}"
+
+    count = r.incr(key)
+    if count == 1:
+        r.expire(key, WINDOW)
+
+    if count > RATE_LIMIT:
+        incr_metric("blocked")
+        ttl = r.ttl(key)
+        print(f"🚫 RATE LIMITED (retry in {ttl}s)")
+        return True
+
+    return False
 
 # ---------------- DNS LOGIC ----------------
 
@@ -33,10 +55,13 @@ def resolve_domain(domain: str, record_type: str):
 
     if record_type not in SUPPORTED_TYPES:
         print(f"❌ Unsupported record type: {record_type}")
-        print(f"Supported types: {', '.join(SUPPORTED_TYPES)}")
         return
 
     incr_metric("total")
+
+    # 🔒 Rate limit check
+    if is_rate_limited(domain):
+        return
 
     cache_key = f"dns:{domain}:{record_type}"
 
